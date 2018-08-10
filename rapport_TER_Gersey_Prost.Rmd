@@ -1,0 +1,1629 @@
+---
+title: "Analyse de données de glissements de terrain sous-marins"
+subtitle: "UPMC, TER sous la direction de Maud Thomas"
+author: Balint Gersey, Nicolas Prost
+date: Janvier - Mai 2017
+output:
+  pdf_document:
+    highlight: tango
+    keep_tex: yes
+    number_sections: yes
+    toc: true
+documentclass: article
+fontsize: 9pt
+geometry:
+- tmargin=0.8in
+- bmargin=0.8in
+- lmargin=0.7in
+- rmargin=0.7in
+classoption: a4paper
+bibliography: bibliographie.bib
+nocite: |
+  @mt, @coles, @cams
+abstract: |
+  La base de données étudiée regroupe des mesures prises sur différents glissements de terrain en Méditerranée. On a accès à leur contexte géographique, sismique, topologique, chronologique. L'étude porte sur la répartition des tailles des glissements, et sur les facteurs qui l'influence.
+  
+  D'un point de vue monovarié, le modèle choisi pour décrire la répartition des surfaces des glissements est un mélange entre un lognormale pour la majorité des valeurs, et une loi de Pareto pour les valeurs extrêmes, c'est-à-dire celles qui dépassent un seuil fixé. D'un point de vue bivarié, les facteurs qui semblent avoir une influence sur les glissements sont la présence d'une base érosive et la sismicité. La chronologie et la pente du terrain ne semblent pas avoir d'influence, mais le manque de données de pente impose la prudence.
+---
+
+
+```{r, include=FALSE}
+#IMPORTATION DES NOUVELLES DONNEES
+
+  MTD.Xn <- read.csv("NouvellesDonnees1.csv", header=TRUE, sep=";", na.strings=c("","NA"))
+  MTD.Mn <- read.csv("NouvellesDonnees2.csv", header=TRUE, sep=";", na.strings=c("","NA"))
+  
+  #copie
+  Xn <- MTD.Xn
+  #indiquer qu'elles viennent des bancs de Xauen et Tofino
+  Xn$SOURCE <- replicate(28,"XT")
+  
+  Mn <- MTD.Mn
+  Mn$SOURCE <- c("SAB","SAB","RA","SAB","SAB","RA","RA","RA","RA","RA","RA","RA","RA","SAB",
+                "SAB","SAB","SAB","SAB","RA","SAB","SAB","RA","RA","SAB","RA","RA","RA","RA",
+                "SAB","SAB","RA","SAB","SAB","SAB","RA","SAB","RA","SAB")
+  
+  #base de donnees complete
+  Dn <- rbind(Xn,Mn)
+  
+  #les bons types...
+  Dn$SURF_KM3 <- as.numeric(as.character(sub(",",".",Dn$SURF_KM3)))
+  Dn$VOL_KM3 <- as.numeric(as.character(sub(",",".",Dn$VOL_KM3)))
+  Dn$PORO <- as.numeric(as.character(sub(",",".",Dn$PORO)))
+  Dn$DVOL_KM3 <- as.numeric(as.character(sub(",",".",Dn$DVOL_KM3)))
+  Dn$BURIAL_MS <- as.numeric(as.character(sub(",",".",Dn$BURIAL_MS)))
+  Dn$RUNOUT_KM <- as.numeric(as.character(sub(",",".",Dn$RUNOUT_KM)))
+  Dn$SCHGHT_M <- as.numeric(as.character(sub(",",".",Dn$SCHGHT_M)))
+  Dn$SCSLOPE_D <- as.numeric(as.character(sub(",",".",Dn$SCSLOPE_D)))
+  Dn$THCK_PQ_M <- as.numeric(as.character(sub(",",".",Dn$THCK_PQ_M)))
+  Dn$DIST_CONT_M <- as.numeric(as.character(sub(",",".",Dn$DIST_CONT_M)))
+  Dn$EQ_DENS <- as.numeric(as.character(sub(",",".",Dn$EQ_DENS)))
+  Dn$SOURCE <- as.factor(Dn$SOURCE)
+  
+  #pente en radians
+  Dn$SCSLOPE_D <- Dn$SCSLOPE_D*pi/180
+  #hauteur en km
+  Dn$SCHGHT_M <- Dn$SCHGHT_M/1000
+  
+  names(Dn)[6] <- "Surface" #ca fait plus serieux
+  names(Dn)[4] <- "AGE_MIS"
+  
+  #un peu d'ordre...
+  Dn <- Dn[,c(1,21,2,3,5,4,16,15,14,17,19,20,10,8,13,12,11,18,7,9,6)]
+  
+  #on remplace les 0 qui n'existent pas
+  Dn$SCSLOPE_D[Dn$SCSLOPE_D==0] <- NA
+  Dn$SCHGHT_M[Dn$SCHGHT_M==0] <- NA
+  Dn$RUNOUT_KM[Dn$RUNOUT_KM==0] <- NA
+  
+  #age ordonne chronologiquement, pour les representations c'est mieux
+  for (i in 1:length(Dn$AGE)) {
+    if (Dn$AGE[i]=="QT3") Dn$AGE.O[i]<-"1.QT3"
+    if (Dn$AGE[i]=="QT4-a") Dn$AGE.O[i]<-"2.QT4-a"
+    if (Dn$AGE[i]=="QT4-b") Dn$AGE.O[i]<-"3.QT4-b"
+    if (Dn$AGE[i]=="QT4-c") Dn$AGE.O[i]<-"4.QT4-c"
+    if (Dn$AGE[i]=="Holocene") Dn$AGE.O[i]<-"5.Holocene"
+  }
+  Dn$AGE <- Dn$AGE.O
+  Dn <- Dn[,-22]
+  for (i in 1:length(Dn$AGE_SISM)) {
+    if (Dn$AGE_SISM[i]=="MPR-Q1") Dn$AGE_SISM.O[i]<-"1.MPR-Q1"
+    if (Dn$AGE_SISM[i]=="MIS12-MPR <") Dn$AGE_SISM.O[i]<-"2.MIS12-MPR <"
+    if (Dn$AGE_SISM[i]=="MIS12-MPR >") Dn$AGE_SISM.O[i]<-"3.MIS12-MPR >"
+    if (Dn$AGE_SISM[i]=="MIS8-MIS12 <") Dn$AGE_SISM.O[i]<-"4.MIS8-MIS12 <"
+    if (Dn$AGE_SISM[i]=="MIS8-MIS12 >") Dn$AGE_SISM.O[i]<-"5.MIS8-MIS12 >"
+    if (Dn$AGE_SISM[i]=="0-MIS8 <") Dn$AGE_SISM.O[i]<-"6.0-MIS8 <"
+    if (Dn$AGE_SISM[i]=="0-MIS8 >") Dn$AGE_SISM.O[i]<-"7.0-MIS8 >"
+    if (Dn$AGE_SISM[i]=="Recent") Dn$AGE_SISM.O[i]<-"8.Recent"
+  }
+  Dn$AGE_SISM <- Dn$AGE_SISM.O
+  Dn <- Dn[,-22]
+  
+  names(Dn) <- c('MTD','Source','Couche','Age_MIS','Age','Chron','Base.erosive','Typologie','Multi','Epaisseur','Distance','Densite','Enfouissement','Porosite','Pente','Hauteur','Runout','Runout.borne','Volume','Volume.decompacte','Surface')
+  
+  attach(Dn)
+  library(MASS)
+  library(stargazer)
+  
+#\addcontentsline{toc}{section}{Remerciements}
+#\section*{Remerciements}
+
+#Nous remercions notre directrice Maud Thomas pour sa disponibilité et ses conseils. 
+
+#Nous remercions également Elia Dacremont, Sara Lafuerza et Alain Rabaute pour leur collaboration et leur aide, nous #n'aurions jamais compris les données sans eux !
+
+```
+
+\newpage
+\addcontentsline{toc}{section}{Introduction}
+\section*{Introduction}
+
+Les glissements de terrain sous-marins peuvent causer d'importants dégâts sur les côtes, c'est pourquoi il est important de mieux comprendre leur distribution. Par exemple, on voudrait connaître la probabilité que dans une certaine zone géographique, survienne un glissement qui dépasse une certaine taille.
+
+Le jeu de données auquel ce rapport fait référence regroupe des mesures faites sur des glissements de terrain dans le domaine d'Alboran, en Méditerranée. L'échelle temporelle est géologique, donc il n'est pas question d'obtenir des mesures faites au moment de chaque glissement pour comprendre les éléments déclencheurs. On n'a accès qu'à leur contexte durable : géologique, topographique, sismique et sédimentaire.
+
+L'objectif de ce travail est d'élaborer des outils permettant de faire des prédictions. Dans un premier temps, on tente d'ajuster un modèle probabiliste univarié pour expliquer la répartition des tailles des glissements. Ensuite, on prend en compte les dépendances entre les différentes variables, afin d'hiérarchiser les facteurs explicatifs et de déterminer leur rôle.
+
+
+
+# Description de la base de données
+
+La base de données regroupe des mesures faites sur 66 glissements (MTD, *mass transport deposits*), et comporte 20 variables : certaines sont liées à la cicatrice d'arrachement, d'autres à la zone de mesure, d'autres enfin au glissement lui-même.
+
+
+
+
+
+## Paramètres de la cicatrice d'arrachement (variables explicatives)
+
+Ces variables définissent le contexte géographique du glissement.
+
+* **Source**  : (qualitative) origine géographique du MTD. "RA" : Ride d'Alboran, "SAB" : Sud-Est du Bassin Sud Alboran, "XT" : Nord des bancs de Xauen et Tofino [@jc, fig.1 p.5].
+
+* **Couche**  : (qualitative) âge chronologique relatif des MTD par rapport aux marqueurs sismiques.
+
+* **Age_MIS**  : (qualitative) âge relatif par rapport aux marqueurs isotopiques.
+
+* **Age**  : (qualitative) âge relatif par rapport aux marqueurs sismiques. [@jc, fig.3 p.9] Les MTD ont eu lieu du Pléistocène (QT3 commence à -1.19 Ma, QT4 commence à -0.79 Ma) au Holocène, le plus récent (moins de 10 000 ans).
+
+* **Chron**  : (qualitative) numéro des MTD dans l'ordre chronologique (1 est le plus ancien). Il y a un classement pour les glissements de Xauen et Tofino, et un autre pour la zone de Montera.
+
+* **Base.erosive**  : (qualitative) présence d'une base érosive ou non.
+
+* **Pente**  : (quantitative) pente de la cicatrice en radians.
+
+* **Epaisseur**  : (quantitative) épaisseur du Plio-Quaternaire sous le MTD ($m$).
+
+* **Distance**  : (quantitative) distance du barycentre du MTD par rapport à un dépôt contouritique proche ($km$).
+
+* **Densite**  : (quantitative) densité de séismes à l'aplomb du MTD  (nombre de séismes par $km^2$, pondération par la magnitude, catalogue 1970-2017, seuls les séismes $0<Mag\leq4$ et $Depth < 40~km$ sont conservés).
+
+
+
+##Facteurs liés à la zone de mesure
+
+Ces variables servent à reconstituer les caractéristiques des glissements, à partir des mesures de sédiments - notamment le volume décompacté.
+
+* **Enfouissement**  : (quantitative) profondeur à laquelle les sédiments ont été retrouvés ($ms$).
+
+* **Porosite**  : (quantitative) porosité mesurée sur sédiments (forages ODP) ($v/v$), $\phi$, relié à l'enfouissement $d$ des sédiments, par la formule (Jollivet-Castelot, fig.20 p.25) :
+                  $$ \phi = 73 - 9\log_{10}(d) $$
+
+                  
+```{r, include=FALSE, fig.cap="Porosité en fonction de l'enfouissement et modèle physique"}
+plot(Enfouissement,Porosite, main='',xlab='',ylab='')
+curve(73-9*log(x)/log(10), add=TRUE, col= "red")
+```
+
+*Remarque : cette formule n'est pas valable pour $d=0$, et ne correspond pas exactement aux données. C'est visiblement une version corrigée de cette formule qui est utilisée pour calculer la porosité.*
+
+
+## Caractéristiques du glissement (variables d'intérêt)
+
+
+* **Typologie**  : (qualitative) type du MTD. DF : *debris flow* - coulée de débris, S : *slide* - glissement en masse.
+
+* **Multi**  : (qualitative) MTD multiphasé ou non.
+
+* **Hauteur**  : (quantitative) hauteur de la cicatrice d'arrachement ($m$).
+
+* **Runout**  : (quantitative) runout du MTD à partir de la cicatrice d'arrachement observée ($km$).
+
+* **Runout.borne**  : (semi-quantitative) runout maximum du MTD à partir de la cicatrice d'arrachement supposée ($km$). Cette variable fournit une borne aux variables non mesurées et permet d'étudier un modèle avec variables censurées.
+
+* **Volume**  : (quantitative) volume estimé des sédiments retrouvés [@jc] ($km^3$).
+
+* **Volume.decompacte**  : (quantitative) volume décompacté du MTD : volume initial $V_0$ qui a glissé, calculé à partir du volume $V_N$ et de la porosité $\phi_N$ (Jollivet-Castelot, p.24) :
+                          $$ V_0 = \frac{1-\phi_N}{1-\phi_0} \times V_N $$
+
+* **Surface**  : (quantitative) surface mesurée du dépôt ($km^2$). On considère que c'est la principale variable d'intérêt, dans la mesure où ce sont les MTD de plus grande surface qui causent le plus de dégâts.
+
+**DONNEES MANQUANTES** : les données de **Runout**, de **Hauteur** et de **Pente** d'escarpement ne sont disponibles que pour **20** MTD sur 66. Il manque également 2 valeurs de **Multi**.
+
+Le tableau \ref{bdd} résume les caractéristiques des variables quantitatives du jeu de données (pour les variables qualitatives, les effectifs de classe seront précisés à chaque utilisation).
+
+```{r, include=FALSE}
+stargazer(Dn[,-c(1,6)])
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Répartition des variables quantitatives} 
+  \label{bdd} 
+\begin{tabular}{@{\extracolsep{5pt}}lccccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+Statistic & \multicolumn{1}{c}{N} & \multicolumn{1}{c}{Mean} & \multicolumn{1}{c}{St. Dev.} & \multicolumn{1}{c}{Min} & \multicolumn{1}{c}{Max} \\ 
+\hline \\[-1.8ex] 
+Epaisseur & 66 & 904.928 & 245.744 & 163.221 & 1,575.900 \\ 
+Distance & 66 & 3,826.435 & 3,242.066 & 0.000 & 10,150.220 \\ 
+Densite & 66 & 0.092 & 0.139 & 0.017 & 0.662 \\ 
+Enfouissement & 66 & 114.242 & 98.529 & 0 & 400 \\ 
+Porosite & 66 & 59.017 & 7.713 & 50.450 & 73.000 \\ 
+Pente & 20 & 0.182 & 0.096 & 0.087 & 0.419 \\ 
+Hauteur & 20 & 0.331 & 0.248 & 0.045 & 0.940 \\ 
+Runout & 20 & 7.381 & 4.777 & 0.800 & 19.920 \\ 
+Volume & 66 & 0.625 & 1.481 & 0.006 & 9.150 \\ 
+Volume.decompacte & 66 & 0.995 & 2.501 & 0.010 & 15.580 \\ 
+Surface & 66 & 16.710 & 32.676 & 0.500 & 202.600 \\ 
+\hline \\[-1.8ex] 
+\end{tabular} 
+\end{table} 
+
+Dans la suite, on laissera de côté le volume mesuré et la porosité, pour éviter toute redondance avec le volume décompacté et l'enfouissement, ces variables étant liées par le calcul.
+
+
+
+\newpage
+# Etude univariée : loi de la surface
+
+Dans cette partie, on étudie la variable de surface. On tente d'ajuster une loi de probabilité à sa répartition, l'objectif étant d'être capable d'effectuer des prédictions sur les tailles des glissements. 
+
+## Description de la surface
+
+```{r histo, echo=F, fig.cap="\\label{fig:histo}Histogramme de la surface"}
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),ylim=c(0,0.16),main='',ylab='',xlab='')
+points(Surface,replicate(length(Surface),0),col='red')
+```
+
+```{r, include=F}
+par(mfrow=c(1,2))
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),xlim=c(0,18),ylim=c(0,0.2), xlab='', ylab='', main='')
+points(Surface,replicate(length(Surface),0),col='red')
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),xlim=c(18,203),ylim=c(0,0.006),xlab='', ylab='', main='')
+points(Surface,replicate(length(Surface),0),col='red')
+```
+
+La surface est unimodale et à queue lourde (kurtosis de 14.6). La plupart des données ont des valeurs faibles, laissant se dégager un groupe de valeurs qu'on peut qualifier d'extrêmes [figure \ref{fig:histo}].
+
+Dans toute la suite, on utilise implicitement l'hypothèse que les observations de surface sont i.i.d. C'est une hypothèse qu'il faut vérifier. Puisqu'on connaît l'ordre chronologique des MTD (variable 'Chron'), une possibilité est de faire un test d'autocorrélation sur la surface en tant que série temporelle. Ce test est réalisé dans la dernière partie (étude bivariée).
+
+
+##Méthode de comparaison des modèles
+
+Pour comparer les modèles, on peut comparer les vraisemblances, mais pour éviter de sur-ajuster et de se retrouver avec des groupes de cinq valeurs, on utilise les critères de vraisemblance pénalisés, et en particulier le critère AICc : c'est un critère  où le nombre de paramètre est d'autant plus pénalisé que le nombre d'observations est faible. On a, lorsque $k$ désigne le nombre de paramètres, $n$ le nombre d'observations et $L$ la vraisemblance :
+
+$$AIC = 2k-2\log(L)$$
+$$AICc = AIC + \frac{2k(k-1)}{n-k-1}$$
+
+Le meilleur modèle est donc celui qui minimise le critère AICc.
+
+Dans les cas litigieux, on pourra également prendre en compte le critère AIC, et le BIC dont l'expression est :
+
+$$BIC = \log(n)k-2\log(L)$$
+
+```{r, echo=FALSE}
+#log-vraisemblance
+LV.maison <- function(obs,densite,k){
+  L <- sapply(obs,densite)
+  LL <- sum(log(L))
+  return(LL)
+} 
+#calcul du critere AIC
+AIC.maison <- function(obs,densite,k){
+  L <- sapply(obs,densite)
+  LL <- sum(log(L))
+  return(2*k-2*LL)
+}
+#critere corrige
+AICc.maison <- function(obs,densite,k){
+  L <- sapply(obs,densite)
+  LL <- sum(log(L))
+  frac <- 2*k*(k-1)/(length(obs)-k-1)
+  return(2*k-2*LL+frac)
+}
+BIC.maison <- function(obs,densite,k){
+  L <- sapply(obs,densite)
+  LL <- sum(log(L))
+  return(log(length(obs))*k-2*LL)
+}
+```
+
+A la fin de cette partie se trouve un tableau récapitulatif des valeurs des différents critères pour les modèles testés.
+
+*Remarque : l'optimisation de ces critères ne correspond pas nécessairement à la meilleure explication des outliers, étant donné qu'il y a beaucoup d'autres valeurs. En seconde approche, empiriquement, on peut comparer les qq-plots.*
+
+
+
+
+
+## Loi log-normale
+
+En fait, il est difficile d'ajuster un modèle usuel à l'ensemble des données, car elles sont très hétérogènes. Cependant, on peut tenter de tronquer ces données à un seuil empirique de 80% (on verra que ce seuil peut être validé théoriquement), afin d'ajuster une loi connue aux petites valeurs, en utilisant la fonction *fitdistr* du package *MASS* sur R.
+
+###Données tronquées
+
+```{r, include=F}
+#comparaison des AICc
+param.wt <- fitdistr(Surface[Surface<20.6],densfun="weibull",start=list(shape=1.5,scale=3),lower=c(0,0))$estimate
+param.gt <- fitdistr(Surface[Surface<20.6],densfun="gamma")$estimate
+param.lt <- fitdistr(Surface[Surface<20.6],densfun="lognormal")$estimate
+```
+
+```{r tronq, echo=F, fig.cap='\\label{fig:tronq}qq-plots des données tronquées à 80% par rapport à gamma, weibull, lognormale', fig.height=2.5}
+par(mfrow=c(1,3))
+n <- length(Surface[Surface<20.6])
+v<-seq(1/(n+1), n/(n+1), by=1/(n+1))
+
+qtheo<-sapply(v,function(x) qgamma(x,param.gt[1],param.gt[2]))
+qqplot(qtheo,Surface[Surface<20.6], xlim=c(0,21),ylim=c(0,21), ylab='',xlab=c('gamma, AICc : ',AICc.maison(Surface[Surface<20.6],function(x) dgamma(x,param.gt[1],param.gt[2]),2)))
+abline(0,1,col='red')
+
+qtheo<-sapply(v,function(x) qweibull(x,param.wt[1],param.wt[2]))
+qqplot(qtheo,Surface[Surface<20.6], xlim=c(0,21),ylim=c(0,21), ylab='',xlab=c('weibull, AICc : ',AICc.maison(Surface[Surface<20.6],function(x) dweibull(x,param.wt[1],param.wt[2]),2)))
+abline(0,1,col='red')
+
+qtheo<-sapply(v,function(x) qlnorm(x,param.lt[1],param.lt[2]))
+qqplot(qtheo,Surface[Surface<20.6], xlim=c(0,21),ylim=c(0,21), ylab='',xlab=c('lognormale, AICc : ',AICc.maison(Surface[Surface<20.6],function(x) dlnorm(x,param.lt[1],param.lt[2]),2)))
+abline(0,1,col='red')
+```
+
+Trois lois se distinguent par leur adéquation aux données tronquées : la gamma, la weibull et la log-normale [figure \ref{fig:tronq}]. Cependant, la log-normale donne un AICc nettement meilleure, c'est donc celle-là qu'on gardera. 
+
+La densité de la loi log-normale de paramètre $\mu\in\mathbb{R}$ et $\sigma^2>0$ est :
+
+$$f_{\mu,\sigma^2}(x) = \frac{1}{x\sigma\sqrt{2\pi}} \exp \left( - \frac{(\log(x)-\mu)^2}{2\sigma^2} \right)  1_{x>0}  $$
+
+
+
+###Jeu de données complet
+
+```{r, include=F}
+#comparaison des AICc
+param.wc <- fitdistr(Surface,densfun="weibull",start=list(shape=1.5,scale=3),lower=c(0,0))$estimate
+param.gc <- fitdistr(Surface,densfun="gamma")$estimate
+param.lc <- fitdistr(Surface,densfun="lognormal")$estimate
+```
+
+```{r compt, echo=F, fig.cap='\\label{fig:compt}qq-plots des données complètes par rapport à gamma, weibull, lognormale', fig.height=2.5}
+par(mfrow=c(1,3))
+n <- length(Surface)
+v<-seq(1/(n+1), n/(n+1), by=1/(n+1))
+
+qtheo<-sapply(v,function(x) qgamma(x,param.gc[1],param.gc[2]))
+qqplot(qtheo,Surface, xlim=c(0,205),ylim=c(0,205), ylab='',xlab=c('gamma, AICc : ',AICc.maison(Surface,function(x) dgamma(x,param.gc[1],param.gc[2]),2)))
+abline(0,1,col='red')
+
+qtheo<-sapply(v,function(x) qweibull(x,param.wc[1],param.wc[2]))
+qqplot(qtheo,Surface, xlim=c(0,205),ylim=c(0,205), ylab='',xlab=c('weibull, AICc : ',AICc.maison(Surface,function(x) dweibull(x,param.wc[1],param.wc[2]),2)))
+abline(0,1,col='red')
+
+qtheo<-sapply(v,function(x) qlnorm(x,param.lc[1],param.lc[2]))
+qqplot(qtheo,Surface, xlim=c(0,205),ylim=c(0,205), ylab='',xlab=c('lognormale, AICc : ',AICc.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)))
+abline(0,1,col='red')
+```
+
+
+La différence d'AICc est encore plus marquée sur le jeu de données complet, et les qq-plots de la figure \ref{fig:compt} confirment que la gamma et la weibull sont hors-jeu. Mais la log-normale n'est pas assez bonne pour expliquer l'ensemble des données : sa queue est trop légère. 
+
+```{r, include=F}
+#kurtosis
+sigma <- param.lc[2]
+exp(4*sigma**2)+2*exp(3*sigma**2)+3*exp(2*sigma**2)-6
+```
+
+Il faut donc trouver un modèle plus fin pour prendre en compte les valeurs extrêmes. 
+
+
+
+##Modèle de mélange
+
+Une possibilité est d'appliquer un modèle de mélange de log-normales, afin d'ajuster un deuxième jeu de paramètres aux valeurs extrêmes. On utilise pour cela l'algorithme EM.
+
+```{r, echo=FALSE}
+#code de l'algorithme EM
+
+#iteration
+update.theta<-function(obs,theta){
+  n<-length(obs)
+  K<-length(theta$pi)
+  
+  pi<-theta$pi
+  mu<-theta$mu
+  sig<-theta$sig
+  
+  f<-function(x){
+    ff<-pi*mapply(function(y,z) dlnorm(x,y,z),mu,sig)
+    return(sum(ff))
+  }
+  
+  alpha<-matrix(,nrow=n,ncol=K)
+  for (i in 1:n){
+    alpha[i,]<-pi*mapply(function(y,z) dlnorm(obs[i],y,z),mu,sig)
+  }
+  alpha<-alpha/replicate(K,sapply(obs,f))
+  
+  pi<-colSums(alpha)/n
+  mu<-colSums(replicate(K,log(obs))*alpha)/(n*pi)
+  sig<-sqrt((colSums(alpha*(replicate(K,log(obs))-t(replicate(n,mu)))**2))/(n*pi))
+  
+  theta.new<-list(pi=pi,mu=mu,sig=sig)
+  return(theta.new)
+}
+
+#algorithme complet
+algoEM<-function(obs,K=2,theta.init=list(pi=replicate(K,1/K),mu=sample(obs,K),sig=sd(obs)),epsilon=.001,R=200){
+  theta.new<-theta.init
+  diff<-1
+  
+  f<-function(theta,x){
+    ff<-theta$pi*mapply(function(y,z) dlnorm(x,y,z),theta$mu,theta$sig)
+    return(sum(ff))
+  }
+  l<-function(theta1,theta2){
+    n1<-sapply(obs,function(z) f(theta2,z))
+    n2<-sapply(obs,function(z) f(theta1,z))
+    d <- sapply(obs,function(z) f(theta1,z))
+    return(abs(prod(n1/d)-prod(n2/d)))
+  }
+  
+  it<-0
+  while (diff>=epsilon && it<=R){
+    theta.old<-theta.new
+    theta.new<-update.theta(obs,theta.new)
+    diff<-l(theta.old,theta.new)
+    it<-it+1
+  }
+  
+  resultat<-list(emv=theta.new,nb.iter=it)
+  return(resultat)
+}
+
+#determination des variables latentes de groupe
+classifieur <- function(obs, model){
+  n <- length(obs)
+  K <- length(model$pi)
+  
+  pi <- model$pi
+  mu <- model$mu
+  sig <- model$sig
+  
+  f <- function(x) {
+    ff <- pi*mapply(function(y,z) dlnorm(x,y,z),mu,sig)
+    return(sum(ff))
+  }
+  
+  alpha <- matrix(,nrow=n,ncol=K)
+  for (i in 1:n) {
+    alpha[i,] <- pi*mapply(function(y,z) dlnorm(obs[i],y,z),mu,sig)
+  }
+  alpha <- alpha/replicate(K,sapply(obs,f))
+  
+  z <- sapply(1:n, function(i) which.max(alpha[i,]))
+  return(z)
+}
+#classifieur avec probas
+classif.probas <- function(obs, model){
+  n <- length(obs)
+  K <- length(model$pi)
+  
+  pi <- model$pi
+  mu <- model$mu
+  sig <- model$sig
+  
+  f <- function(x) {
+    ff <- pi*mapply(function(y,z) dlnorm(x,y,z),mu,sig)
+    return(sum(ff))
+  }
+  
+  alpha <- matrix(,nrow=n,ncol=K)
+  for (i in 1:n) {
+    alpha[i,] <- pi*mapply(function(y,z) dlnorm(obs[i],y,z),mu,sig)
+  }
+  alpha <- alpha/replicate(K,sapply(obs,f))
+  
+  return(alpha)
+}
+```
+
+```{r,echo=FALSE}
+#melange de log-normales
+
+#densite
+dlnormmix <- function(x,theta){
+  #densk <- theta$pi * exp(-((log(x)-theta$mu)**2)/(2*theta$sig**2)) / (sqrt(2*pi)*x*theta$sig)
+  densk <- theta$pi * dlnorm(x,theta$mu,theta$sig)
+  dens <- sum(densk)
+  return(dens)
+}
+#simulation
+rlnormmix <- function(n,theta){
+  K <- length(theta$pi)
+  rlnormmixunseul <- function(theta) {
+    z <- sample(seq(1,K,by=1),size=1,prob=theta$pi)
+    x <- rlnorm(1,theta$mu[z],theta$sig[z])
+    return(x)
+  }
+  replicate(n,rlnormmixunseul(theta))
+}
+#fonction de repartition
+plnormmix <- function(p,theta){
+  fk <- theta$pi * plnorm(p,theta$mu,theta$sig)
+  f <- sum(fk)
+  return(f)
+}
+#inverse
+inverse <- function (f, lower = -100, upper = 100) {
+  function (y) uniroot((function (x) f(x) - y), lower = lower, upper = upper)$root
+}
+qlnormmix <- function(theta){
+  f <- function(x) plnormmix(x,theta)
+  return(inverse(f,0,203))
+}
+```
+
+```{r, echo=FALSE}
+#troncature a un pourcentage ou une valeur
+tronq.inf <- function(obs,methode,p=1,v=203) {
+  if (methode=='p') {
+    #troncature a un pourcentage
+    n <- length(obs)
+    indices <- (1:n)
+    indices <- indices[indices<=p*n]
+    return ((sort(obs))[indices])
+  }
+  if (methode=='v') {
+    #troncature sous une valeur donnee
+    return (obs[obs<=v])
+  }
+}
+#valeurs extremes
+tronq.sup <- function(obs,methode,p=1,v=203) {
+  if (methode=='p') {
+    #troncature a un pourcentage
+    n <- length(obs)
+    indices <- (1:n)
+    indices <- indices[indices>=p*n]
+    return ((sort(obs))[indices])
+  }
+  if (methode=='v') {
+    #troncature au-dessus d'une valeur donnee
+    return (obs[obs>=v])
+  }
+}
+
+tronq.milieu <- function(obs,methode,p=c(1,1),v=c(203,203)) {
+  if (methode=='p') {
+    #troncature a un pourcentage
+    n <- length(obs)
+    indices <- (1:n)
+    indicesindices<-indices[indices>=p[1]*n]
+    indices <- indicesindices[indicesindices<=p[2]*n]
+    return ((sort(obs))[indices])
+  }
+  if (methode=='v') {
+    #troncature au milieu
+    obsobs<-obs[obs>=v[1]]
+    return (obsobs[obsobs<=v[2]])
+  }
+}
+```
+
+L'algorithme approche l'EMV du modèle de mélange paramétré par $(p,\mu_1,\mu_2,\sigma_1,\sigma_2)$, dont la densité est donnée par :
+
+$$ f(x) = \left( \frac{p}{x\sigma_1\sqrt{2\pi}} \exp \left( - \frac{(\log(x)-\mu_1)^2}{2\sigma_1^2} \right) + \frac{1-p}{x\sigma_2\sqrt{2\pi}} \exp \left( - \frac{(\log(x)-\mu_2)^2}{2\sigma_2^2} \right)  \right) 1_{x>0} $$
+
+L'avantage de cette méthode est qu'elle classifie en même temps les données en deux groupes, quantifiant ainsi la notion empirique de valeur extrême.
+
+```{r, echo=FALSE}
+result<-algoEM(Surface,K=2,theta.init=list(pi=c(.8,.2),mu=c(1,4),sig=c(.9,.6)))
+thetaEM <- result$emv
+#print(thetaEM)
+```
+
+
+La classification donne un seuil entre les valeurs 14.90 et 20.57, donc à 78%.
+
+```{r, include=FALSE, fig.cap='Histogramme de la surface'}
+#histo
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),ylim=c(0,0.2),main='',xlab='',ylab='')
+x <- seq(0,200,by=.01)
+points(x,sapply(x,function(x) dlnormmix(x,thetaEM)),type='l',xlab='',ylab='',col='red')
+z<-classifieur(Surface,thetaEM)
+points(Surface,replicate(length(Surface),0),col=z)
+curve(dlnorm(x,param.lc[1],param.lc[2]),add=T, col='green')
+#print(classif.probas(sort(Surface),thetaEM))
+legend(100, 0.15,c('Densite lognormale','Densite melange','Groupe inférieur','Groupe extreme'),col=c('green','red','black','red'),pch=c(-1,-1,1,1),lty=c(1,1,-1,-1))
+```
+
+
+```{r, include=FALSE,fig.cap='Zooms sur la plage inférieure et les valeurs extrêmes'}
+par(mfrow=c(1,2))
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),xlim=c(0,18),ylim=c(0,0.2), main='',xlab='')
+points(x,sapply(x,function(x) dlnormmix(x,thetaEM)),type='l',xlab='',ylab='',col='red')
+curve(dlnorm(x,param.lc[1],param.lc[2]),add=T, col='green')
+points(Surface,replicate(length(Surface),0),col=z)
+
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),xlim=c(18,203),ylim=c(0,0.006),main='',xlab='')
+points(x,sapply(x,function(x) dlnormmix(x,thetaEM)),type='l',xlab='',ylab='',col='red')
+curve(dlnorm(x,param.lc[1],param.lc[2]),add=T, col='green')
+points(Surface,replicate(length(Surface),0),col=z)
+```
+
+```{r, echo=FALSE}
+seuil <- 20
+S.tronq <- tronq.inf(Surface,methode='v',v=seuil)
+S.ext <- tronq.sup(Surface,methode='v',v=seuil)
+```
+
+```{r, echo=FALSE}
+aics<- AICc.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)
+aicm2<- AICc.maison(Surface,function(x) dlnormmix(x,thetaEM),5)
+```
+
+
+```{r mix, echo=FALSE, fig.cap='\\label{fig:mix}qq-plot de la surface par rapport à la log-normale et au mélange', fig.height=4}
+par(mfrow=c(1,2))
+qtheo<-sapply(v,function(x) qlnorm(x,param.lc[1],param.lc[2]))
+qqplot(qtheo,Surface, xlim=c(0,203),ylim=c(0,203), ylab='',xlab=c('lognormale, AICc : ',AICc.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)))
+abline(0,1,col='red')
+#qqplot melange
+qtheo<-sapply(v,function(x) qlnormmix(thetaEM)(x))
+qqplot(qtheo,Surface, xlim=c(0,203),ylim=c(0,203), main='',xlab=c('mélange, AICc : ',AICc.maison(Surface,function(x) dlnormmix(x,thetaEM),5)),ylab='',col=z[order(Surface)])
+legend(75, 60,c('Petits','Extremes'),col=c('black','red'),pch=c(1,1))
+abline(0,1,col='red')
+```
+
+Le mélange à deux composantes améliore l'AICc, et la plupart des valeurs considérées comme extrêmes sont bien expliquées par le modèle [figure \ref{fig:mix}].
+
+Malheureusement, la plus grande valeur de surface ne rentre toujours pas dans le modèle, et le fait d'augmenter le nombre de groupes dans le mélange n'améliore pas l'ajustement.
+
+
+
+
+## Loi de Pareto
+
+Le modèle suggéré dans les rapports sur un autre jeu de données est une loi de Pareto [@caml, p.2605]. C'est une loi à queue lourde, très utilisée pour modéliser des valeurs extrêmes. Elle n'est donc pas adaptée à l'intégralité de la distribution, mais seulement à sa queue. Elle a pour densité :
+
+
+$$f_{k,s}(x)= \frac{ks^k}{x^{k+1}} 1_{[s,\infty[}(x)$$
+
+$k>0$ représente la vitesse de décroissance de la densité, et $s>0$ le seuil minimal.
+
+```{r, echo=F}
+#densite
+dpareto <- function(x,k,s){
+  dp <- (sign(x-s)+1)/2
+  dp <- dp*k*(s**k)/(x**(k+1))
+  dp
+}
+#fonction de repartition
+ppareto <- function(q,k,s){
+  pp <- (sign(q-s)+1)/2
+  pp <- pp*(1-(q/s)**(-k))
+  pp
+}
+#quantiles
+qpareto <- function(p,k,s){
+  #n'a un sens que si 0<p<1
+  qp <- s*((1-p)**(-1/k))
+  qp
+}
+#echantillon
+rpareto <- function(n,k,s){
+  rp <- s*runif(n)**(-1/k)
+  rp
+}
+```
+
+
+### Estimation des paramètres
+
+En fixant un seuil $s$, il existe un EMV explicite pour le paramètre k : 
+
+$$\hat{k}^{EMV}=\frac{n}{\sum\limits_{i=0}^{n}{\log(X_i)}-n\log(s)}$$
+
+
+```{r, echo=FALSE}
+n <- length(S.ext)
+s <- seuil
+k <- n/(sum(log(S.ext))-n*log(s))
+```
+
+
+```{r, include=FALSE, fig.cap='qq-plot des valeurs extrêmes par rapport à la loi de Pareto'}
+#quantiles théoriques
+s.ord<-sort(S.ext)
+n<-length(S.ext)
+v<-seq(1/(n+1),n/(n+1), by=1/(n+1))
+w<-sapply(v,function(x) qpareto(x,k,s))
+qqplot(w, s.ord, xlab='',ylab='', main='')
+abline(0,1, col='red')
+
+#print(AIC.maison(S.ext,function(x) dpareto(x,k,s), 2))
+```
+
+
+
+ 
+
+
+###Modèle complet
+
+Pour comparer le modèle de Pareto et le mélange de log-normales, il faut regarder le modèle entier. Pour cela, on complète la loi de Pareto sur les données extrêmes par une loi log-normale sur les petites valeurs. Il s'agit à nouveau d'un modèle de mélange, et il faut donc ajuster le seuil $s$, la forme $k$ pour la Pareto au-dessus, les paramètres $\mu$ et $\sigma$ de la log-normale en-dessous, et la pondération $p$. On cherche une densité de la forme :
+
+$$ f(x) = \frac{p}{x\sigma\sqrt{2\pi}} \exp \left( - \frac{(\log(x)-\mu)^2}{2\sigma^2} \right)1_{\mathbb{R}_+^*}(x)~+~ (1-p)\frac{ks^k}{x^{k+1}} 1_{[s,\infty[}(x)  $$
+
+Afin de trouver le meilleur seuil, on teste une séquence de valeurs par pas de 0.01, et pour chacune on définit les autres paramètres et on calcule l'AICc. On garde la valeur qui maximise l'AICc. On trouve un seuil optimal de 20.56 (juste avant la 52e valeur, c'est à dire à 78%), et un AICc de 456.7, on a donc battu le mélange de log-normales [figure \ref{fig:pareto}].
+
+```{r, echo=F}
+ajustement <- function(obs,s) {
+  obs.inf <- obs[obs<=s]
+  obs.sup <- obs[obs>s]
+  ns <- length(obs.sup)
+  
+  param.l <- fitdistr(obs.inf,densfun="lognormal")$estimate
+  param.p <- ns/(sum(log(obs.sup))-ns*log(s))
+  
+  return(list(mu=param.l[1],sig=param.l[2],k=param.p))
+}
+#densite
+dpl <- function(x,s,mu,sig,k,p) {
+  #if (x<=s) return(p*dlnorm(x,mu,sig))
+  #else return((1-p)*dpareto(x,k,s))
+  return(p*dlnorm(x,mu,sig)+(1-p)*dpareto(x,k,s))
+}
+ppl <- function(x,s,mu,sig,k,p) {
+  return(p*plnorm(x,mu,sig)+(1-p)*ppareto(x,k,s))
+}
+qpl <- function(s,mu,sig,k,p) {
+  f <- function(x) ppl(x,s,mu,sig,k,p)
+  return(inverse(f,0.1,500))
+}
+```
+
+
+```{r, echo=F}
+vrais.seuil <- function(s) {
+  l <- ajustement(Surface,s)
+  p <- length(Surface[Surface<=s])/length(Surface)
+  return(LV.maison(Surface,function(x) dpl(x,s,l$mu,l$sig,l$k,p),5))
+}
+vs <- seq(19,21,by=0.01)
+old <- -1000
+seuil <- 14
+for (s in vs) {
+  new <- vrais.seuil(s)
+  if (new>old) {
+    old <- new
+    seuil <- s
+  }
+}
+l <- ajustement(Surface,seuil)
+p <- length(Surface[Surface<=seuil])/length(Surface)
+#AICc.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+```
+
+
+
+```{r pareto, echo=F,fig.cap='\\label{fig:pareto}qq-plot, mélange de log-normales et mélange log-normale/Pareto', fig.height=4}
+#x <- seq(0,200,by=0.1)
+#hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203),xlim=c(20,200),ylim=c(0,0.02))
+#points(x,sapply(x,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p)), type='l',add=T,col='red')
+#points(Surface,replicate(length(Surface),0))
+
+par(mfrow=c(1,2))
+n<-length(Surface)
+v<-seq(1/(n+1),n/(n+1), by=1/(n+1))
+
+qtheo<-sapply(v,function(x) qlnormmix(thetaEM)(x))
+qqplot(qtheo,Surface, xlim=c(0,203),ylim=c(0,203), main='',xlab=c('lognormale, AICc : ',AICc.maison(Surface,function(x) dlnormmix(x,thetaEM),5)),ylab='',col=z[order(Surface)])
+legend(75, 60,c('Petits','Extremes'),col=c('black','red'),pch=c(1,1))
+abline(0,1,col='red')
+
+zp <- Surface>20.56
+for (i in 1:length(zp)) {
+  if(zp[i]) zp[i]<-2
+  else zp[i]<-1
+}
+qtheo<-sapply(v,function(x) qpl(seuil,l$mu,l$sig,l$k,p)(x))
+qqplot(qtheo,Surface, xlim=c(0,205),ylim=c(0,205), main='',xlab=c('Pareto, AICc : ',AICc.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)) ,ylab='',col=zp[order(Surface)])
+legend(75, 60,c('Petits','Extremes'),col=c('black','red'),pch=c(1,1))
+abline(0,1,col='red')
+```
+
+
+
+
+## Loi de Pareto Généralisée
+
+La modélisation des valeurs extrêmes par la loi de Pareto donne de bons résultats, mais on peut essayer de faire encore mieux avec une Pareto généralisée.
+
+Sa fonction de répartition, paramétrée par une forme $k>0$, une échelle $\lambda>0$ et un seuil $s>0$ est donnée par :
+
+
+$$ \forall x >s, \qquad F(x) = 1-\left(1+\frac{k\left(x-s\right)}{\lambda}\right)^{-\frac{1}{k}} $$
+
+
+```{r, echo=F}
+#loi de pareto generalisee
+
+#densite
+dpg <- function(x,k,l,s){
+  dp <- (sign(x-s)+1)/2
+  dp <- (dp/l)*(1+k*(x-s)/l)**(-1-1/k)
+  dp
+}
+#fonction de repartition
+ppg <- function(q,k,l,s){
+  pp <- (sign(q-s)+1)/2
+  pp <- pp*(1-(1+k*(q-s)/l)**(-1/k))
+  pp
+}
+#quantiles
+qpg <- function(p,k,l,s){
+  #n'a un sens que si 0<p<1
+  qp <- s+(l/k)*((1-p)**(-k)-1)
+  qp
+}
+#echantillon
+rpg <- function(n,k,l,s){
+  rp <- s+(l/k)*(runif(n)**(-k)-1)
+  rp
+}
+```
+
+Pour ajuster ce modèle aux valeurs extrêmes, nous allons utiliser le package extRemes de R.
+
+
+```{r, include=FALSE,warning=FALSE}
+library("extRemes")
+```
+
+### Ajustement des paramètres
+
+En utilisant la même méthode que pour la loi de Pareto, on peut ajuster le seuil pour optimiser la vraisemblance.
+
+
+```{r, echo=F}
+ajustement.g <- function(obs,s) {
+  obs.inf <- obs[obs<=s]
+  obs.sup <- obs[obs>s]
+  ns <- length(obs.sup)
+  
+  param.l <- fitdistr(obs.inf,densfun="lognormal")$estimate
+  param.p <- fevd(obs, Dn, threshold = s, type = "GP", na.action = na.pass)$result$par
+  
+  return(list(mu=param.l[1],sig=param.l[2],l=param.p[1],k=param.p[2]))
+}
+#densite
+dpgl <- function(x,s,mu,sig,k,l,p) {
+  return(p*dlnorm(x,mu,sig)+(1-p)*dpg(x,k,l,s))
+}
+ppgl <- function(x,s,mu,sig,k,l,p) {
+  return(p*plnorm(x,mu,sig)+(1-p)*ppg(x,k,l,s))
+}
+qpgl <- function(s,mu,sig,k,l,p) {
+  f <- function(x) ppgl(x,s,mu,sig,k,l,p)
+  return(inverse(f,0.1,203))
+}
+```
+
+
+```{r, echo=F, include=F}
+vrais.seuil.g <- function(s) {
+  a <- ajustement.g(Surface,s)
+  p <- length(Surface[Surface<=s])/length(Surface)
+  return(LV.maison(Surface,function(x) dpgl(x,s,a$mu,a$sig,a$k,a$l,p),6))
+}
+
+vs <- seq(19,21,by=0.01)
+old <- -1000
+seuil <- 14
+for (s in vs) {
+  new <- vrais.seuil.g(s)
+  if (new>old) {
+    old <- new
+    seuil <- s
+  }
+}
+
+a <- ajustement.g(Surface,seuil)
+seuil
+p <- length(Surface[Surface<=seuil])/length(Surface)
+AICc.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+LV.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+LV.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+BIC.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+BIC.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+AIC.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+AIC.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+```
+On trouve le même seuil que pour la Pareto,  à savoir 20.56. En revanche, l'AICc de 457.6 est moins bon qu'avec la Pareto. Les critères AIC et BIC confirment que la loi de Pareto généralisée sur les valeurs extrêmes donne de moins bons résultats. La vraisemblance est meilleure, heureusement puisque le modèle de Pareto généralisé contient celui de Pareto, mais le paramètre supplémentaire ($\lambda$) fait pencher tous les autres critères du côté de la Pareto.
+
+Par ailleurs, on observe en comparant les qq-plots de la figure \ref{fig:parg} que la donnée la plus grande entre dans le modèle avec la Pareto, et pas avec la Pareto généralisée. C'est un heureux hasard, puisque ce n'est pas cela qu'on a cherché à optimiser.
+
+**Note : Il faudrait quantifier cela, en étudiant notamment l'influence des grandes valeurs sur le modèle.**
+
+On peut interpréter cela de la manière suivante : en donnant la même importance à toutes les données dans l'optimisation de la vraisemblance, et avec ce paramètre $\lambda$ supplémentaire, le modèle de Pareto généralisé a tendance à sur-ajuster sur les données plus faibles, et est donc moins à même d'expliquer les outliers.
+
+
+```{r, echo=F}
+detach("package:extRemes", unload=TRUE)
+```
+
+```{r parg, echo=F,fig.cap='\\label{fig:parg}qq-plots, mélange log-normale/Pareto et log-normale/généralisée', fig.height=4}
+par(mfrow=c(1,2))
+qtheo<-sapply(v,function(x) qpl(seuil,l$mu,l$sig,l$k,p)(x))
+qqplot(qtheo,Surface, xlim=c(0,205),ylim=c(0,205), main='',xlab=c('Pareto, AICc : ',AICc.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)) ,ylab='',col=zp[order(Surface)])
+legend(75, 60,c('Petits','Extremes'),col=c('black','red'),pch=c(1,1))
+abline(0,1,col='red')
+
+qtheo<-sapply(v,function(x) qpgl(seuil,a$mu,a$sig,a$k,a$l,p)(x))
+qqplot(qtheo,Surface, xlim=c(0,205),ylim=c(0,205), main='',xlab=c('Pareto généralisée, AICc : ',AICc.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)), col=zp[order(Surface)],ylab='')
+legend(75, 60,c('Petits','Extremes'),col=c('black','red'),pch=c(1,1))
+abline(0,1,col='red')
+```
+
+
+
+
+
+
+
+##Conclusion de l'étude de la surface
+
+La loi log-normale est celle qui est la mieux adaptée à une grande partie des valeurs de surface. Les valeurs extrêmes sont le mieux représentées par la loi de Pareto.
+
+Le modèle final est donc un mélange de log-normale de loi de Pareto.
+
+On trouve comme estimateurs des paramètres de ce mélange : $\hat{p}=0.78$ (le pourcentage de valeurs sous le seuil), $\hat{s}=20.56$ (le seuil), $\hat{k}=1.19$ $\hat{\mu}=1.02$, $\hat{\sigma}=0.88$.
+
+*Remarque : ce modèle de mélange a été réalisé en supposant que les valeurs inférieures au seuil suivent la log-normale de manière certaine, et celles au-delà du seuil la Pareto de manière certaine aussi. Le calcul de l'estimateur $\hat{p}$ est donc grossier.*
+
+*Remarque : un autre modèle est envisageable mais n'a pas été approfondi, il est décrit en annexe.*
+
+Le tableau \ref{par} récapitule les paramètres des modèles testés, et le tableau \ref{aj}, les différents critères d'ajustement correspondants.
+
+```{r, include=F}
+#recapitulatif des jeux de parametres
+#LN,LNmix,PG,P
+print("log-normale : ")
+param.lc
+print("melange de log-normale : ")
+thetaEM
+print("melange avec pareto : ")
+l
+print("melange avec pareto generalisee : ")
+a
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Récapitulatif des estimateurs des paramètres} 
+  \label{par} 
+\begin{tabular}{@{\extracolsep{5pt}}lccccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex]
+& $\mu$ & $\sigma$ & $p$ & $k$ & $\lambda$ \\ 
+\hline \\[-1.8ex] 
+Lognormale & 1.66 & 1.46 &  & & \\ 
+Mélange lognormales & (1.07 , 3.85) & (0.94 , 0.73) & 0.79 & & \\ 
+Pareto généralisée & 1.02 & 0.88 & 0.79 & 0.29 & 28.9 \\
+Pareto & 1.02 & 0.88 & 0.79 & 1.19 &  \\
+\hline\\[-1.8ex]
+\end{tabular} 
+\end{table}
+
+```{r, include=F}
+#recapitulatif des criteres d'ajustement
+print("a chaque fois : LN, mixLN, P, PG")
+#LN,LNmix,PG,P
+print("log-vraisemblance")
+LV.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)
+LV.maison(Surface,function(x) dlnormmix(x,thetaEM),5)
+LV.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+LV.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+print("AIC")
+AIC.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)
+AIC.maison(Surface,function(x) dlnormmix(x,thetaEM),5)
+AIC.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+AIC.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+print("AICc")
+AICc.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)
+AICc.maison(Surface,function(x) dlnormmix(x,thetaEM),5)
+AICc.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+AICc.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+print("BIC")
+BIC.maison(Surface,function(x) dlnorm(x,param.lc[1],param.lc[2]),2)
+BIC.maison(Surface,function(x) dlnormmix(x,thetaEM),5)
+BIC.maison(Surface,function(x) dpgl(x,seuil,a$mu,a$sig,a$k,a$l,p),6)
+BIC.maison(Surface,function(x) dpl(x,seuil,l$mu,l$sig,l$k,p),5)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Récapitulatif des critères d'ajustement} 
+  \label{aj} 
+\begin{tabular}{@{\extracolsep{5pt}}lcccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex]
+& \multicolumn{1}{c}{log-vraisemblance} & \multicolumn{1}{c}{AIC} & \multicolumn{1}{c}{AICc} & \multicolumn{1}{c}{BIC}\\ 
+\hline \\[-1.8ex] 
+Lognormale & -228.3 & 460.6 & 460.6 & 465.0 \\ 
+Mélange lognormales & -223.5 & 457.0 & 457.7 & 467.9 \\ 
+Pareto généralisée & -222.3 & 456.6 & 457.6 & 469.7 \\
+Pareto & -223.0 & 455.9 & 456.6 & 466.9 \\
+\hline\\[-1.8ex]
+\end{tabular} 
+\end{table}
+
+*Remarque : Visiblement le critère BIC pénalise trop le nombre de paramètres, puisqu'il considère que le modèle log-normal simple est le meilleur, ce qui n'est pas réaliste empiriquement.*
+
+On a trouvé le meilleur modèle parmi ceux qu'on a envisagé, en comparant les valeurs de vraisemblance et d'AICc. 
+
+Il faut maintenant valider le fait que ce modèle est bon dans l'absolu. En première approche, on évalue graphiquement l'ajustement du modèle aux données [figure \ref{fig:ecdf}].
+
+```{r ecdf, echo=F, fig.cap="\\label{fig:ecdf}Fonction de répartition empirique de la surface et loi ajustée"}
+plot(ecdf(Surface),main='',xlab='',ylab='',pch=20)
+curve(ppl(x,seuil,l$mu,l$sig,l$k,p),add=T,col='red')
+abline(v=20.56,col='blue',lty=2)
+```
+
+Graphiquement, le modèle a l'air bon. Pour quantifier cela, on réalise un test de Kolmogorov-Smirnov. La p-valeur de 0.85 nous conduit à ne pas rejeter l'hypothèse nulle d'adéquation de la loi : le modèle est bon.
+
+```{r, include=F}
+ks.test(Surface,function(x) ppl(x,seuil,l$mu,l$sig,l$k,p))
+```
+
+
+## Prédiction
+
+Le modèle étant fixé, on peut réaliser des prédictions sur les valeurs de surface, en s'appuyant sur la loi ajustée [figure \ref{fig:ecdf}]. On remarque sur la courbe de la fonction de répartition le point de décrochage qui correspond au seuil entre la loi log-normale et la Pareto.
+
+```{r fdr, include=F, fig.cap='\\label{fig:fdr}Fonction de répartition de la loi mélange ajustée'}
+x<-seq(0,210,by=0.01)
+plot(x,sapply(x,function(x) ppl(x,seuil,l$mu,l$sig,l$k,p)), xlab='', ylab='',main='',type='l')
+abline(0,0)
+```
+
+```{r, include=F}
+1-ppl(100,seuil,l$mu,l$sig,l$k,p)
+```
+
+Par exemple, la probabilité qu'un glissement dépasse 100 $km^2$ est estimée par le modèle à 3,5%.
+
+
+## Application au volume (décompacté)
+
+La répartition du volume est similaire à celle de la surface, et on pourra appliquer les mêmes modèles que pour Surface: 
+
+* mélange de log-normales
+
+* mélange d'une log-normale avec une Pareto ou Pareto généralisée pour les valeurs extrêmes
+
+* loi IF
+
+
+
+\newpage
+# Etude bivariée et multivariée : liens naturels
+
+Certaines variables sont liées par leur définition, au point d'en être presque redondantes. On a déjà traité le cas de la porosité et de l'enfouissement, ainsi que du volume et du volume décompacté, qui sont liés par calcul donc complètement redondantes.
+
+L'objectif de cette partie est de dégager un ensemble de variables explicatives aussi peu liées entre elles que possible, pour pouvoir étudier leur impact sur les glissements séparément - on devra quand même réaliser des études multivariées.
+
+
+##Variables liées à l'âge
+
+Les variables "Couche", "Age_MIS", "Age", "Chron", "Enfouissement" font toutes références au contexte chronologique : en effet les MTD qui ont été retrouvés le plus profondément sont les plus anciens. "Age" et "Age_MIS" utilisent simplement des marqueurs différents pour dater les sédiments. 
+
+La figure \ref{fig:age} représente l'enfouissement en fonction de l'indice des MTD dans l'ordre chronologique, pour chaque zone : il est clair que les MTD à la surface sont les plus récents.
+
+*Remarque : les glissements de la zone XT sont datés relativement entre eux, ceux de RA et SAB sont datés entre eux aussi, mais il n'y a pas de datation relative pour l'ensemble des glissements, d'où les deux courbes.*
+
+Ainsi, si on veut connaître l'influence de la chronologie sur une autre variable, on pourra utiliser "Enfouissement" si on a besoin d'une variable quantitative, et "Age" si on a besoin d'une variable qualitative. 
+
+"Chron" permet d'ordonner les MTD, pour en faire une série temporelle et faire une étude d'autocorrélation.
+
+**Note : les valeurs de "Couche" ne sont pas exploitables telles quelles, mais elles n'apportent a priori pas plus d'information.**
+
+```{r age, echo=F, fig.cap="\\label{fig:age}Enfouissement en fonction de l'ordre chronologique pour chaque zone"}
+#boxplot(-Enfouissement~Age)
+plot(-Enfouissement~Chron,col=Source, xlab='Indice', ylab='-Enfouissement', main='')
+points(-Enfouissement[Source=='XT'][order(Chron[Source=='XT'])]~sort(Chron[Source=='XT']),col='green',type='l') #chronologie pour chaque zone
+points(-Enfouissement[Source!='XT'][order(Chron[Source!='XT'])]~sort(Chron[Source!='XT']),col='red',type='l')
+legend(30, -250,c('XT','RA','SAB'),col=c('green','black','red'),pch=c(1,1,1))
+
+#table(Age,Age_MIS)
+```
+
+
+##Contexte sismique
+
+Les épicentres des séismes sont en général proches des dépôts contouritiques, les variables "Distance" et "Densite" sont donc naturellement liées, au sens où les glissements qui sont proches, ou directement sur les dépôts contouritiques sont nécessairement ceux qui ont la plus forte densité de séismes à leur verticale [figure \ref{fig:seisme}].
+
+```{r seisme, echo=F, fig.cap='\\label{fig:seisme}Densité de séismes en fonction de la distance au dépôt contouritique'}
+plot(Densite~Distance, main='',xlab='Densite de seismes',ylab='Distance')
+```
+
+##Contexte géographique
+
+Les MTD proviennent de trois zones géographiques distinctes, qui sont plus ou moins proches des zones sismiques et qui ont peut-être des caractéristiques sédimentaires et des typographies différentes. On s'attend donc à des liens entre les variables : "Source", "Distance" et "Densite", "Base.erosive", "Pente".
+
+De fait, on observe que tous les séismes ont lieu dans la zone de Xauen et Tofino [figure \ref{fig:geo}], et que les MTD du SAB ont nettement plus souvent des bases érosives [tableau \ref{sb}]. Pour la pente, c'est plus délicat, étant donné que peu de valeurs sont disponibles [figure \ref{fig:pente}].
+
+```{r geo, echo=F, fig.cap="\\label{fig:geo}Densité de séismes en fonction de la zone géographique"}
+#par(mfrow=c(1,2))
+
+#tous les seismes ont lieu dans la zone XT
+b <- boxplot(Densite ~ Source, plot=0)
+boxplot(Densite ~ Source, ylab='Densite de seismes', names=paste(b$names, "(n=", b$n, ")"))
+
+#table(Base.erosive,Source)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Tableau de contingence source/base érosive} 
+  \label{sb} 
+\begin{tabular}{@{\extracolsep{5pt}}llccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex]
+& & \multicolumn{2}{c}{Source} \\
+\hline \\[-1.8ex]
+& & \multicolumn{1}{c}{RA} & \multicolumn{1}{c}{SAB} & \multicolumn{1}{c}{XT}\\ 
+\hline \\[-1.8ex] 
+Base érosive & Non & 13 & 7 & 23 \\ 
+& Oui & 6 & 12 & 5 \\ 
+\hline\\[-1.8ex]
+\end{tabular} 
+\end{table}
+
+
+
+
+```{r pente, echo=F, fig.cap="\\label{fig:pente}Pente en fonction de la zone géographique"}
+#Peu de données !
+b <- boxplot(Pente ~ Source, plot=0)
+boxplot(Pente ~ Source, ylab='Pente', names=paste(b$names, "(n=", b$n, ")"))
+
+#boxplot(Densite~Base.erosive) #pas evident
+```
+
+Ainsi, lorsqu'on voudra étudier l'influence de la zone géographique sur les caractéristiques des MTD, ça aura plus de sens d'étudier l'influence de la sismicité, de la présence d'une base érosive, et de la pente, puisque ce sont probablement les facteurs qui comptent le plus.
+
+**Note : si on parvient à bien comprendre l'influence de ces trois facteurs, il sera peut-être possible de déterminer s'ils suffisent à expliquer le rôle de la zone géographique.**
+
+
+##Caractéristiques des glissements
+
+Intuitivement, un "gros" glissement a une grande surface, un grand volume, glisse loin, en plusieurs phases, et crée une cicatrice haute sur son flanc d'origine. On s'attend donc à avoir des liens importants, potentiellement linéaires, entre les variables "Surface", "Volume.decompacte", "Runout", "Runout.borne", "Hauteur", "Multi" et "Typologie".
+
+###Causes du runout
+
+Dans un premier temps, on voudrait savoir dans quelle mesure les plus gros glissements sont ceux qui vont le plus loin.
+
+```{r, include=F}
+summary(lm(Runout~Surface+Volume.decompacte+Hauteur))
+#summary(lm(Runout~Surface*Volume.decompacte*Hauteur))
+#summary(lm(Runout~Surface*Hauteur))
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Modèle linéaire du runout en fonction des autres paramètres de glissement} 
+  \label{runout} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & Runout \\ 
+\hline \\[-1.8ex] 
+ Surface & 0.123$^{***}$ \\ 
+  & (0.025) \\ 
+  & \\ 
+ Volume.decompacte & $-$0.289 \\ 
+  & (0.208) \\ 
+  & \\ 
+ Hauteur & 9.599$^{***}$ \\ 
+  & (1.960) \\ 
+  & \\ 
+ Constant & 2.487$^{***}$ \\ 
+  & (0.594) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 20 \\ 
+R$^{2}$ & 0.915 \\ 
+Adjusted R$^{2}$ & 0.899 \\ 
+Residual Std. Error & 1.515 (df = 16) \\ 
+F Statistic & 57.624$^{***}$ (df = 3; 16) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.05; $^{**}$p$<$0.01; $^{***}$p$<$0.001} \\ 
+\end{tabular} 
+\end{table}
+
+
+
+La surface et la hauteur semblent impacter directement le runout [tableau \ref{runout}]. On ne détaillera pas davantage ce modèle, étant donné le manque de valeurs de runout. 
+
+**Note : On pourra le compléter à l'aide d'un modèle à variables censurées avec "Runout.borne", à condition de savoir comment traiter ces données.**
+
+###Différences entre les types de glissements
+
+```{r, include=F}
+table(Multi,Typologie)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Tableau de contingence multi/typologie} 
+  \label{mt} 
+\begin{tabular}{@{\extracolsep{5pt}}llcc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex]
+& & \multicolumn{2}{c}{Typologie} \\
+\hline \\[-1.8ex]
+& & \multicolumn{1}{c}{DF} & \multicolumn{1}{c}{S}\\ 
+\hline \\[-1.8ex] 
+Multi & Non & 48 & 9 \\ 
+& Oui & 7 & 0 \\ 
+\hline\\[-1.8ex]
+\end{tabular} 
+\end{table}
+
+
+Les seuls glissements multiphasés sont de type "DF" [tableau \ref{mt}]. Pour isoler le facteur de multiphasage, on fait un boxplot sur les glissements "DF" [figure \ref{fig:multi}]. On observe que les glissements multiphasés sont tous de grande surface (le plus petit glissement multiphasé fait 11.78 $km^2$, les autres sont tous dans les valeurs extrêmes). L'analyse de la variance valide l'influence du type [tableau \ref{mdf}], mais il faut faire attention car on a peu de données de multiphasés.
+
+```{r multi, echo=F, fig.cap="\\label{fig:multi}Répartition de la surface pour les glissements de type 'DF', multiphasés ('O') ou non ('N')"}
+b<-boxplot(Surface[Typologie=='DF']~Multi[Typologie=='DF'], plot=0)
+boxplot(Surface[Typologie=='DF']~Multi[Typologie=='DF'], ylab='Surface', names=paste(b$names, "(n=", b$n, ")"))
+
+#anova(lm(Surface[Typologie=='DF']~Multi[Typologie=='DF']))
+```
+
+
+\begin{table}[!htbp] \centering 
+  \caption{Analyse de la variance surface en fonction du multiphasage sachant que le type est DF} 
+  \label{mdf} 
+\begin{tabular}{@{\extracolsep{5pt}}lcccccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{6}{c}{\textit{Dependent variable:}} \\ 
+ 
+\\[-1.8ex]
+& \multicolumn{6}{c}.Surface[Typologie == "DF"] \\ 
+\hline \\[-1.8ex] 
+& Df & Sum Sq & Mean Sq & F value & Pr(>F) & \\
+\hline \\[-1.8ex]
+Multi[Typologie == "DF"] & 1 & 20829 & 20829.5 & 23.81 & 1.013e-05 & *** \\ 
+  & & & & & & \\ 
+Residuals & 53 & 46366 & 874.8 & & & \\ 
+  & \\ 
+
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{6}{r}{$^{*}$p$<$0.05; $^{**}$p$<$0.01; $^{***}$p$<$0.001} \\ 
+\end{tabular} 
+\end{table}
+
+###Surface et volume
+
+On étudie ici le rapport entre la surface et le volume décompacté.
+
+Le rapport de R. Urgeles et A. Camerlenghi suggère un modèle de type puissance entre le volume et la surface ($V=\alpha S^{\gamma}$). On se ramène à un modèle linéaire sur les log pour trouver $\alpha$ et $\gamma$.
+
+**Attention** cependant, d'un point de vue statistique, il faut se poser la question des erreurs. Si les logarithmes du volume et de la surface sont liés par un modèle linéaire gaussien, alors dans le modèle initial, l'erreur n'est plus additive mais multiplicative (!), ce qui fait qu'au lieu d'avoir un cylindre de prédiction, on obtient un cône, avec des erreurs beaucoup plus importantes dans les grandes valeurs [figure \ref{fig:ml}].
+
+$$ \log(V) = \beta_0 + \beta_1 \log(S) + \epsilon, \qquad \epsilon \sim \mathcal{N}(0,\sigma^2) $$
+$$V = e^{\beta_0} \times S^{\beta_1} \times e^{\epsilon}, \qquad e^\epsilon \sim Lognormale(0,\sigma^2)$$
+
+
+```{r ml, echo=FALSE, fig.cap='\\label{fig:ml}Volume en fonction de la surface, avec et sans log, modèle ajusté et intervalles de prédiction à 3%'}
+par(mfrow=c(1,2))
+droite<- lm(log(Volume.decompacte)~log(Surface))
+#representer les regions de confiance
+
+plot(log(Volume.decompacte)~log(Surface), xlab='log(Surface)', ylab='log(Volume)', main='')
+abline(droite$coefficients[1],droite$coefficients[2],col='red')
+newx<-log(Surface)
+prd<-predict(droite,newdata=data.frame(newx),interval = 'conf', level = 0.97)
+points(sort(newx),sort(prd[,2]),col='red',type='l',lty=2)
+points(sort(newx),sort(prd[,3]),col='red',type='l',lty=2)
+
+plot(Volume~Surface, xlab='Surface', ylab='Volume', main='')
+curve(exp(droite$coefficients[1])*x**droite$coefficients[2], add=T, col='red')
+points(sort(exp(newx)),sort(exp(prd[,2])),col='red', type='l',lty=2)
+points(sort(exp(newx)),sort(exp(prd[,3])),col='red', type='l',lty=2)
+```
+
+
+
+Toutes les hypothèses que l'on a testées montrent que le modèle linéaire gaussien entre la log-surface et le log-volume est parfaitement validé : les résultats se trouvent en annexe.
+
+
+
+
+
+
+\newpage
+# Etude bivariée et multivariée : liens de causalité
+
+A la suite de cette classification des variables, on peut dégager un modèle réduit :
+
+* Variable d'intérêt : "Surface". C'est la caractéristique des MTD qui importe le plus, car ce sont les MTD de plus grande surface qui causent le plus de dégâts.
+
+* Variables explicatives : "Age"/"Enfouissement"/"Chron" (selon le besoin), "Distance"/"Densite", "Base.erosive" et "Pente".
+
+On cherche en particulier à déterminer les facteurs qui peuvent engendrer un glissement de surface extrême.
+
+```{r surf, echo=F, fig.cap='\\label{fig:surf}Surface en fonction des différents facteurs', fig.height=6}
+par(mfrow=c(2,2))
+plot(Surface~Enfouissement)
+plot(Surface~Densite)
+plot(Surface~Pente, xlab='Pente (n=20)')
+b <- boxplot(Surface ~ Base.erosive, plot=0)
+boxplot(Surface ~ Base.erosive, xlab='Base.erosive', ylab='Surface', names=paste(b$names, "(n=", b$n, ")"))
+
+##plot(Surface[Base.erosive=='O']~Densite[Base.erosive=='O'])
+#points(Surface[Base.erosive=='N']~Densite[Base.erosive=='N'],col='red')
+#plot(Densite~Enfouissement)
+```
+
+A l'oeil [figure \ref{fig:surf}], c'est la densité de séismes et la présence d'une base érosive qui ont une influence. On tentera plutôt de démontrer l'indépendance de la surface par rapport aux variables d'enfouissement et de pente.
+
+##Base érosive
+
+L'analyse de la variance [tableau \ref{be}] suggère que la présence d'une base érosive joue un rôle non négligeable : un sol érosif serait donc plus propice à de gros glissements.
+
+```{r, include=F}
+anova(lm(Surface~Base.erosive)) #ca casse pas trois pattes a un canard
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Analyse de la variance de la surface en fonction de la base érosive} 
+  \label{be} 
+\begin{tabular}{@{\extracolsep{5pt}}lcccccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{6}{c}{\textit{Dependent variable:}} \\ 
+ 
+\\[-1.8ex]
+& \multicolumn{6}{c}.Surface \\ 
+\hline \\[-1.8ex] 
+& Df & Sum Sq & Mean Sq & F value & Pr(>F) & \\
+\hline \\[-1.8ex]
+Base.erosive & 1 & 6490 & 6490.3 & 6.6026 & 0.01252 & * \\ 
+  & & & & & & \\ 
+Residuals & 64 & 62912 & 983.0 & & & \\ 
+  & \\ 
+
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{6}{r}{$^{*}$p$<$0.05; $^{**}$p$<$0.01; $^{***}$p$<$0.001} \\ 
+\end{tabular} 
+\end{table} 
+
+##Sismicité
+
+```{r dens, echo=F, fig.cap='\\label{fig:dens}Surface en fonction de la distance'}
+plot(Surface~Distance)
+abline(15,0.035,col='blue',lty=2)
+abline(20.56,0,col='red',lty=2)
+```
+
+On observe sur la figure \ref{fig:dens} que tous les MTD qui ont une surface classifiée extrême (i.e. au-dessus du seuil de 20.56, en rouge) sont loin des dépôts, dans des zones à faible densité de séismes. Sans pouvoir parler de modèle linéaire, la surface semble bornée dans un cône de diamètre proportionnel à la distance.
+
+##Chronologie
+
+Afin de savoir si la surface est indépendante du temps, on peut calculer l'autocorrélation de la Surface en tant que série temporelle, en utilisant la datation relative "Chron". On a donc deux classements, un pour 'XT', l'autre pour 'RA' et 'SAB'.
+
+On cherche à déceler une éventuelle périodicité des valeurs extrêmes [figure \ref{fig:autoc}].
+
+Dans chaque cas, le seuil est dépassé pour une valeur de décalage, ce qui pourrait suggérer une périodicité de la série, mais ce pic n'est causé que par deux ou trois grandes valeurs de surface, comme on le voit sur la figure \ref{fig:chron}, ce n'est pas significatif.
+
+
+```{r autoc, echo=F, fig.cap='\\label{fig:autoc}Autocorrélation de la surface pour chaque zone',fig.height=4}
+par(mfrow=c(1,2))
+
+Surface1 <- Surface[order(Chron[Source=='XT'])]
+acf(Surface1, lag.max = 28,main='XT',xlab="Décalage d'indice")
+
+Surface1 <- Surface[order(Chron[Source!='XT'])]
+acf(Surface1, lag.max = 38,main='RA/SAB',xlab="Décalage d'indice")
+```
+
+```{r chron, echo=F, fig.height=4, fig.cap="\\label{fig:chron}Surface en fonction de l'ordre chronologique, pour chaque zone"}
+par(mfrow=c(1,2))
+plot(Chron[Source=='XT'],Surface[Source=='XT'], ,main='XT',ylab='Surface',xlab='Indice')
+points(sort(Chron[Source=='XT']),Surface[Source=='XT'][order(Chron[Source=='XT'])],type='l')
+plot(Chron[Source!='XT'],Surface[Source!='XT'], main='RA/SAB',ylab='Surface',xlab='Indice')
+points(sort(Chron[Source!='XT']),Surface[Source!='XT'][order(Chron[Source!='XT'])],type='l')
+```
+
+
+##Pente
+
+On peut tenter de réaliser un modèle linéaire de la surface en fonction de la pente, mais les tests associés suggèrent que c'est une mauvaise idée. Il paraît difficile de trouver un lien entre la pente et la surface.
+
+\newpage
+\appendix
+
+\section{Annexe}
+
+\subsection{Alternative à la théorie des extrêmes pour la loi de la surface}
+
+Corinne Sinner, Yves Domincy, Christophe Ley, Julien Trufin et Patrick Weber ont introduit en 2016 une densité notée IF permettant d’interpoler entre des lois power law (ex : Pareto) et des lois power law avec exponential cutoff (ex : Weibull). 
+
+La densité de cette nouvelle loi est donne par: 
+
+$$ IF(x;p,b,c,q,x_{0}) = \frac{|b|q}{c} \left(\frac{x-x_0}{c}\right)^{b-1} G_{p}(x)^{-q-1} \left(1-\frac{1}{p+1} G_{p}(x)^{-q}\right)^p $$
+
+
+pour $x>x_{0}$, $p\geq0$, $b\neq0$, $c>0$, $q>0$, $x_{0}\geq0$
+
+et où
+
+$$ G_{p}(x) = \left(p+1\right)^{\frac{-1}{q}}+\left(\frac{x-x_0}{c}\right)^b $$
+
+Pour plus de détail on pourra se référer à leur article de recherche [@if]. 
+
+On peut essayer de trouver la meilleure loi IF possible en utilisant la fonction optim de R qui permet de maximiser une fonction (la log vraisemblance dans notre cas). Comme la Surface est une quantité positive on va fixer $x_{0}=0$.
+
+Malheureusement la fonction étant convexe pour certains valeurs des paramètres et concave pour d'autre, il faudrait faire une étude plus approfondie des techniques d'optimisation (ex : optimisation aléatoire) afin de pouvoir trouver les bons paramètres de la loi IF. 
+
+```{r, echo=FALSE,warning=FALSE}
+#fonction G
+Gp <- function(x,p, b, c, q) {
+  gp <- (p+1)^(-1/q)+(x/c)^b
+  gp
+}
+#densite
+dIF <- function(x,p, b, c, q){
+  ip <- abs(b)*q/c+(x/c)^(b-1)*Gp(x, p, b, c, q)^(-q-1)*(1-1/(p+1)*Gp(x, p, b, c, q)^(-q))^p
+  ip
+}
+
+#quantiles
+qIF <- function(x,p, b, c, q){
+  #n'a un sens que si 0<p<INF
+  qIF <- c*(p+1)^(-1/(b*q))*((1-x^(1/(p+1)))^(-1/q)-1)^(1/b)
+  qIF
+}
+#log-vraisemblance
+log.lklh.densite <- function(x, par) {
+                    -66*log(abs(par[2])*par[4]/(par[3]^par[2]))-(par[2]-1)*sum(log(x))+(par[3]+1)*sum(log((par[1]+1)^(-1/par[3])+(x/par[3]^par[2])))-par[1]*sum(log(1-(1/(par[1]+1))*((par[1]+1)^(-1/par[4])+(x/par[3])^par[2])^(-par[4])))
+}
+
+```
+
+```{r, echo=FALSE, eval=FALSE}
+param <- optim(par = c(1,0.001,140, 370), log.lklh.densite, x = Surface, method="SANN") $par
+n <- length(Surface)
+v<-seq(1/n, 1, by=1/n)
+qtheo<-sapply(v,function(x) qIF(x,param[1],param[2], param[3], param[4]))
+qqplot(qtheo,Surface, xlim=c(0,qtheo[length(qtheo)-1]+1),ylim=c(0,qtheo[length(qtheo)-1]+1))
+abline(0,1,col='red')
+
+hist(Surface,freq=F,breaks=c(0,1,2,2.75,4,5,7,11,21,50,203))
+curve(dIF(x,param[1],param[2], param[3], param[4]),add=T,col='red', from = 0, to=300)
+```
+
+
+
+\newpage
+\subsection{Validation du modèle linéaire gaussien volume-surface}
+
+Pour rappel, plusieurs hypothèses sont nécessaires afin d'obtenir de bonnes propriétés des estimateurs des paramètres du modèle (estimateurs des paramètres sans biais et de variance minimale, par exemple).
+
+
+Les hypothèses explicites, c'est-a-dire celles qui portent sur les termes d'erreur $\epsilon_{i}$, sont au nombre de trois :
+
+* Ils sont de variance constante, notée $\sigma^{2}$, c'est l’hypothèse d'homoscédasticité.
+
+* Ils sont indépendants.
+
+* Ils suivent une loi normale de moyenne nulle et de variance $\sigma^{2}$. 
+
+
+A cela s'ajoutent deux hypothèses supplémentaires, qui sont implicites au modèle :
+
+
+* La relation est linéaire. En particulier, il faudra se méfier des relations non-linéaires (relation quadratique ou exponentielle par exemple) et des ruptures de pentes. 
+
+* Il n'y a pas d'erreur de mesure : on fera notamment attention aux potentielles valeurs aberrantes.
+
+
+
+### Validation globale
+
+Les tests de nullité des coefficients du modèle linéaire, ainsi que le test de Fisher sur la significativité du modèle ont tous de très bonnes p-valeurs, ce qui nous conduit à ne pas rejeter le modèle linéaire [tableau \ref{mls}].
+
+```{r, include=FALSE}             
+summary(droite)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{Modèle linéaire entre les logarithmes du volume et de la surface} 
+  \label{mls} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & log(Volume.decompacte) \\ 
+\hline \\[-1.8ex] 
+ log(Surface) & 1.193$^{***}$ \\ 
+  & (0.046) \\ 
+  & \\ 
+ Constant & $-$3.755$^{***}$ \\ 
+  & (0.102) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 66 \\ 
+R$^{2}$ & 0.912 \\ 
+Adjusted R$^{2}$ & 0.911 \\ 
+Residual Std. Error & 0.548 (df = 64) \\ 
+F Statistic & 662.494$^{***}$ (df = 1; 64) \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.05; $^{**}$p$<$0.01; $^{***}$p$<$0.001} \\ 
+\end{tabular} 
+\end{table}
+
+
+             
+### Analyse des résidus
+
+On valide ici les hypothèses explicites du modèle linéaire.
+
+#### Graphe des résidus studentisés 
+
+Dans un premier temps on étudie les résidus graphiquement, afin d'avoir une idée de la normalité et de l'homoscédasticité.
+             
+
+```{r, echo=FALSE}
+residus_stud<-rstudent(droite)
+```
+            
+Traçons le graphique des résidus studentisés pour valider la normalité. Afin de pouvoir également tester l'homoscédasticité, on classe en abscisse les indices par ordre croissant de surface [figure \ref{fig:stud}].
+
+```{r stud, echo=FALSE,fig.cap='\\label{fig:stud}Répartition des résidus studentisés'}
+n <- length(Surface)
+plot(order(Surface),residus_stud,col='blue',xlab='Indices de surface croissante',ylab='Résidus studentisés',ylim=c(-3.5,3.5))
+abline(-2,0)
+abline(2,0)
+```
+
+
+3 valeurs, c'est-à-dire environ 5% des données dépassent le seuil de 2, ce qui est parfaitement normal. Par ailleurs, l'homoscédasticité semble bien vérifiée.
+
+Pour quantifier cela, on effectue le test de Shapiro-Will sur la normalité, et le test de Breusch-Pagan sur l'homoscédasticité. Les deux tests valident les hypothèses nulles (normalité et homoscédasticité) avec de bonnes p-valeurs (respectivement 0.16 et 0.86).
+
+```{r, include=FALSE}             
+shapiro.test(residus_stud)
+```         
+             
+```{r, include=FALSE}         
+require(lmtest) 
+bptest(droite)
+```
+
+
+
+#### Indépendance
+
+L’indépendance des résidus doit être, à ce stade, diagnostiquée en fonction des connaissances que nous avons sur le jeu de données. Dans notre cas, nous la supposerons vérifiée. 
+
+L'analyse des résidus pourra également nous fournir quelques indications supplémentaires.
+
+Cependant, si une forme de dépendance est soupçonné dans les données, certains tests spécifiques peuvent être mis en place. En particulier, si l'on soupçonne une auto-corrélation des erreurs (ce qui peut arriver si les données sont mesurées temporellement), il existe le test de Breusch-Godfrey, qui peut être réalisé à partir de la commande $bgtest$ du package $lmtest$. 
+
+             
+#### Leviers 
+
+On étudie la distance qui sépare chaque observation de la moyenne des observations.
+             
+```{r lev, echo=FALSE, fig.cap="\\label{fig:lev}Etude des points leviers"}
+levier <- hatvalues(droite)
+plot(1:n, levier,xlab='Indice',ylab='Poids h_ii')
+p <- droite$rank
+seuil1 <- 2*p/n
+seuil2 <- 3*p/n
+abline(seuil1,0,lty=2)
+abline(seuil2,0,lty=3)
+ID <- (1:n)[levier>seuil2]
+text(ID,levier[ID],ID,col='red',pos=1)
+```
+
+
+La Figure \ref{fig:lev} indique la présence d'un individu qui dépasse le deuxième seuil de $3p/n$ et qui est donc un levier potentiel. Il correspond à la plus grande valeur de surface (202.60).
+             
+             
+             
+#### Distance de Cook
+
+             
+La distance de Cook synthétise l'éloignement à la moyenne et la taille du résidu, permettant de quantifier l'influence d'une valeur sur le modèle.
+             
+```{r cook, echo=FALSE, fig.cap='\\label{fig:cook}Distance de Cook'}             
+cook<-cooks.distance(droite) 
+plot(1:n, cook, xlab='Indice',ylab='Distance de Cook')
+s1 <- qf(0.5,p,n-p)
+s2 <- qf(0.1,p,n-p)
+abline(s2,0,lty=2)
+abline(s1,0,lty=3)
+ID <- (1:n)[cook>s2]
+text(ID,cook[ID],ID,col='red',pos=1)
+```
+
+Deux valeurs dépassent le seuil critique [figure \ref{fig:cook}], et ce sont toutes les deux des valeurs qu'on a qualifiées d'extrêmes.
+
+
+\newpage
+# Bibliographie
+
